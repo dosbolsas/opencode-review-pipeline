@@ -1,0 +1,103 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "plan",
+  "agent": {
+    "plan": {
+      "description": "Read-only Principal Architect. Investigates the codebase and writes the implementation plan to PLAN.md. Cannot edit source.",
+      "model": "deepseek/deepseek-v4-pro",
+      "reasoningEffort": "xhigh",
+      "prompt": "{file:./architect.md}",
+      "temperature": 1.0,
+      "permission": {
+        "edit": { "*": "deny", "PLAN.md": "allow" },
+        "write": { "*": "deny", "PLAN.md": "allow" },
+        "web_search": "allow",
+        "bash": {
+          "*": "deny",
+          "git status*": "allow",
+          "git diff HEAD*": "allow",
+          "git log*": "allow"
+        }
+      }
+    },
+    "build": {
+      "description": "Executing Builder. Implements PLAN.md to the letter, runs tests, leaves changes uncommitted for review.",
+      "model": "deepseek/deepseek-v4-pro",
+      "reasoningEffort": "high",
+      "prompt": "{file:./build.md}",
+      "temperature": 1.0,
+      "permission": {
+        "bash": {
+          "git commit*": "deny",
+          "git push*": "deny"
+        }
+      }
+    },
+    "reviewer": {
+      "description": "Independent architecture reviewer. Reads PLAN.md and the codebase itself and critiques the proposed plan for subtle reasoning and judgment flaws BEFORE any code is written. Invoke with @reviewer after a plan is produced and before building.",
+      "mode": "subagent",
+      "model": "opencode-go/glm-5.1",
+      "temperature": 0.6,
+      "prompt": "{file:./reviewer.md}",
+      "permission": {
+        "edit": "deny",
+        "write": "deny",
+        "web_search": "allow",
+        "bash": {
+          "*": "deny",
+          "git status*": "allow",
+          "git diff HEAD*": "allow",
+          "git log*": "allow"
+        }
+      }
+    },
+    "drift-check": {
+      "description": "Conformance checker. Compares the implementation against PLAN.md and reports only where the build diverged from the spec (omissions, deviations, out-of-scope additions). Invoke with @drift-check AFTER a build. Does not judge plan quality.",
+      "mode": "subagent",
+      "model": "opencode-go/kimi-k2.6",
+      "temperature": 1.0,
+      "prompt": "{file:./drift-check.md}",
+      "permission": {
+        "edit": "deny",
+        "write": "deny",
+        "bash": {
+          "*": "deny",
+          "git status*": "allow",
+          "git diff HEAD*": "allow",
+          "git log*": "allow"
+        }
+      }
+    },
+    "git": {
+      "description": "Git Operator. The ONLY agent allowed to commit and push. Invoke with @git when you're ready to ship — invoking it IS the decision. Prints the files, message, and target branch as it commits and pushes.",
+      "mode": "subagent",
+      "model": "opencode-go/kimi-k2.6",
+      "temperature": 1.0,
+      "prompt": "{file:./git.md}",
+      "permission": {
+        "edit": "deny",
+        "write": "deny",
+        "bash": {
+          "*": "deny",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git add*": "allow",
+          "git rm PLAN.md": "allow",
+          "git commit*": "allow",
+          "git push": "allow",
+          "git push origin*": "allow",
+          "git pull*": "allow",
+          "git branch*": "allow",
+          "git checkout*": "allow",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git reset*": "deny",
+          "git rebase*": "deny",
+          "git rm -r*": "deny",
+          "git rm -rf*": "deny"
+        }
+      }
+    }
+  }
+}
