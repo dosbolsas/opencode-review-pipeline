@@ -1,5 +1,15 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "{{KEY}}"
+      },
+      "enabled": true
+    }
+  },
   "default_agent": "plan",
   "agent": {
     "plan": {
@@ -29,7 +39,9 @@
       "permission": {
         "bash": {
           "git commit*": "deny",
-          "git push*": "deny"
+          "git push*": "deny",
+          "git add*": "deny",
+          "git rm*": "deny"
         }
       }
     },
@@ -79,23 +91,19 @@
         "write": "deny",
         "bash": {
           "*": "deny",
-          "git status*": "allow",
-          "git diff*": "allow",
-          "git log*": "allow",
-          "git add*": "allow",
-          "git rm PLAN.md": "allow",
-          "git commit*": "allow",
-          "git push": "allow",
-          "git push origin*": "allow",
-          "git pull*": "allow",
-          "git branch*": "allow",
-          "git checkout*": "allow",
+          "git *": "allow",
           "git push --force*": "deny",
           "git push -f*": "deny",
           "git reset*": "deny",
           "git rebase*": "deny",
           "git rm -r*": "deny",
-          "git rm -rf*": "deny"
+          "git rm -rf*": "deny",
+          "git checkout*": "deny",
+          "git clean*": "deny",
+          "git stash*": "deny",
+          "git merge*": "deny",
+          "git branch -D*": "deny",
+          "git pull*": "deny"
         }
       }
     }

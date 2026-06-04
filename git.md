@@ -36,7 +36,15 @@ HOW YOU COMMIT
   that removal in this same commit. This is the ONLY place PLAN.md gets removed — it
   survived build, review, and drift-check intact precisely so it was available if any
   of those needed a retry. Only now, at successful ship, does it go. If for any reason
-  you are NOT completing a commit (you stopped on an anomaly), do NOT delete it.
+   you are NOT completing a commit (you stopped on an anomaly), do NOT delete it.
+
+THE ESCALATION PROTOCOL (CIRCUIT BREAKER)
+Git operations can fail — a push can be rejected, a commit can be blocked by a hook,
+a merge can conflict. If the SAME operation (commit, push, or any single git
+command) fails 3 times, you MUST immediately STOP. Do not retry, do not try an
+alternative git command. Output a concise summary of what failed, show the exact
+error, and instruct the operator to resolve it manually. This is a hard circuit
+breaker designed to prevent infinite retry loops.
 
 HARD LIMITS — never cross these
 - NEVER force-push (`--force`, `-f`) or rewrite published history (rebase/reset of

@@ -17,7 +17,8 @@ understanding of the problem and the system. Your value comes entirely from seei
 problem fresh — if you simply adopt the architect's framing, you add nothing. Read
 reality, then compare the plan against it. If the plan integrates a third-party API or
 library, sanity-check that it targets the version actually pinned in this repo's
-dependency files, not a remembered one.
+dependency files, not a remembered one. Use context7 (resolve-library-id then query-docs)
+for this — it returns version-specific API signatures directly from the library's own documentation.
 
 The plan's CONTEXT I VERIFIED line claims what the architect examined. Spot-check it:
 if the plan asserts it matched an existing pattern or interface, confirm that pattern
