@@ -38,10 +38,17 @@
       "temperature": 1.0,
       "permission": {
         "bash": {
-          "git commit*": "deny",
-          "git push*": "deny",
-          "git add*": "deny",
-          "git rm*": "deny"
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git reset*": "deny",
+          "git rebase*": "deny",
+          "git rm*": "deny",
+          "git checkout*": "deny",
+          "git clean*": "deny",
+          "git stash*": "deny",
+          "git merge*": "deny",
+          "git branch -D*": "deny",
+          "git pull*": "deny"
         }
       }
     },
@@ -80,30 +87,20 @@
         }
       }
     },
-    "git": {
-      "description": "Git Operator. The ONLY agent allowed to commit and push. Invoke with @git when you're ready to ship — invoking it IS the decision. Prints the files, message, and target branch as it commits and pushes.",
+    "code-review": {
+      "description": "Code quality reviewer. Reads the diff and changed files after a build, checks for bugs, anti-patterns, security issues, and correctness. Invoke with @code-review AFTER a build and drift-check. Does not check conformance (that's drift-check's job).",
       "mode": "subagent",
       "model": "opencode-go/kimi-k2.6",
       "temperature": 1.0,
-      "prompt": "{file:./git.md}",
+      "prompt": "{file:./code-review.md}",
       "permission": {
         "edit": "deny",
         "write": "deny",
         "bash": {
           "*": "deny",
-          "git *": "allow",
-          "git push --force*": "deny",
-          "git push -f*": "deny",
-          "git reset*": "deny",
-          "git rebase*": "deny",
-          "git rm -r*": "deny",
-          "git rm -rf*": "deny",
-          "git checkout*": "deny",
-          "git clean*": "deny",
-          "git stash*": "deny",
-          "git merge*": "deny",
-          "git branch -D*": "deny",
-          "git pull*": "deny"
+          "git status*": "allow",
+          "git diff HEAD*": "allow",
+          "git log*": "allow"
         }
       }
     }

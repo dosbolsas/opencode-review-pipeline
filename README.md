@@ -1,14 +1,15 @@
 # opencode-review-pipeline
 
 **A multi-agent [OpenCode](https://opencode.ai) setup that splits AI coding into
-separate roles — plan, review, build, drift-check, ship — each on a different model
-that checks the others' work.**
+separate roles — plan, review, build, drift-check, code-review, ship — each on a
+different model that checks the others' work.**
 
 Most AI-coding setups use one model to plan, write, and check its own work, so it
 grades its own homework and passes. This pipeline separates those roles across
-*different model families* on purpose: the model that reviews the plan and the model
-that checks the build are not the same lab as the model that wrote the code, so
-mistakes have a real chance of being caught by a fresh perspective.
+*different model families* on purpose: the model that reviews the plan, the model
+that checks the build, and the model that reviews the code are not the same lab as the
+model that wrote the code, so mistakes have a real chance of being caught by a fresh
+perspective.
 
 It's designed for a **product-minded operator** who describes features in plain
 language and isn't expected to read code — the architect owns all technical
@@ -16,7 +17,7 @@ decisions; you own product intent and the final "is this what I wanted" call.
 
 > **Status:** complete and assembled, but **not yet fully verified end-to-end**. Run
 > the dry-run checklist (§9) on a throwaway repo before relying on it — especially the
-> git agent's force-push test, since OpenCode's permission matching has proven flaky.
+> build agent's force-push test, since OpenCode's permission matching has proven flaky.
 > This is a working setup to adopt deliberately, not a guarantee.
 
 ## This is a template
@@ -31,14 +32,15 @@ live together.
 1. **Copy the files** (`opencode.jsonc` + the five `.md` prompts) into your project
    root, beside each other.
 2. **Connect your providers.** This setup uses DeepSeek (direct) for plan/build and
-   OpenCode Go for the review/check/git agents — so authenticate both (`/connect`).
+   OpenCode Go for the review/check/code-review agents — so authenticate both (`/connect`).
    You can also consolidate everything onto one provider; see §6.
 3. **Verify the model strings** in OpenCode's `/models` picker and fix any that don't
    resolve — a wrong `provider/model` prefix makes an agent silently fail to load.
 4. **Run the dry-run (§9)** on a throwaway repo to confirm permissions, reasoning
-   effort, and the git agent's safety guards actually hold on your version.
+   effort, and the build agent's safety guards actually hold on your version.
 5. **Use it:** describe a feature to `plan` → `@reviewer` → Tab to `build` →
-   `@drift-check` → run it yourself → `@git` to ship. (Full walkthrough in §7.)
+   `@drift-check` → `@code-review` → run it yourself → tell `build` "commit and push"
+   to ship. (Full walkthrough in §7.)
 
 ## How to read the rest of this doc
 
@@ -75,18 +77,15 @@ caught by a different perspective:
 | Role | Agent | Job | Model | Why this model |
 |------|-------|-----|-------|----------------|
 | **Architect** | `plan` | Reads the codebase, decides the architecture, writes the plan. Touches no source code. | DeepSeek V4 Pro (Think Max) | Strongest open reasoner; deep thinking is the whole value here, and verbosity doesn't matter for a few planning calls. |
-| **Builder** | `build` | Implements the plan to the letter. Runs tests. Leaves changes uncommitted. | DeepSeek V4 Pro (Think High) | Same model, lower reasoning effort — strong execution without the full Max token burn across a build loop. |
+| **Builder** | `build` | Implements the plan to the letter. Runs tests. Leaves changes uncommitted; commits only when told to ship. | DeepSeek V4 Pro (Think High) | Same model, lower reasoning effort — strong execution without the full Max token burn across a build loop. |
 | **Reviewer** | `reviewer` | Independently critiques the *plan* for subtle judgment flaws, before any code is written. | GLM-5.1 | **Different lab** from the builder → decorrelated blind spots. Strong reasoner for a pure-judgment task. |
 | **Drift-Check** | `drift-check` | After the build, checks whether the implementation matches the plan — including anything built *in excess* of the spec. | Kimi K2.6 | **Different lab** from the builder → decorrelation at the second checkpoint. Strong at multi-step tool loops (status → diff → read → reconcile), which is exactly this job. |
-| **Git** | `git` | The ONLY agent allowed to commit and push. Ships already-reviewed work. | Kimi K2.6 | Committing is a multi-step tool loop too, Kimi's strength. No decorrelation concern — it checks nothing. Low-volume seat, so model cost is negligible. |
+| **Code-Review** | `code-review` | After the build and drift-check, examines the actual code for bugs, security issues, anti-patterns, and correctness. Does NOT check conformance. | Kimi K2.6 | Different lab from the builder; catches implementation quality problems drift-check explicitly ignores. Strong at code inspection.
 
-**The single most important principle:** the Reviewer and Drift-Check are on
-*different model families* from the Builder **on purpose**. If every checker were
-DeepSeek, they'd share DeepSeek's blind spots and wave through exactly the mistakes
-that matter. Decorrelation is the point. Do not "simplify" by putting everything on
-one model, and do not "simplify" by merging the checkers with the git agent — that
-quietly removes the main safeguard (a checker with a stake in shipping is no longer
-an independent checker). See §5.
+**The single most important principle:** the Reviewer, Drift-Check, and Code-Review
+are on *different model families* from the Builder **on purpose**. If every checker
+were DeepSeek, they'd share DeepSeek's blind spots and wave through exactly the
+mistakes that matter. Decorrelation is the point.
 
 ### What each checker can and cannot catch
 - The **Reviewer** catches *errors of judgment* — a plan that would compile and pass
@@ -99,11 +98,15 @@ an independent checker). See §5.
   files, not just the diff — which is why its prompt makes it run `git status` and
   read new files' contents, not just `git diff`. It does **not** judge whether the
   plan was good — that's the Reviewer's job.
+- **Code-Review** catches *implementation quality problems* — bugs, security
+  vulnerabilities, anti-patterns, and correctness issues that drift-check explicitly
+  ignores (drift-check only checks conformance, not quality). It runs after
+  drift-check, so it only inspects code that has already passed the conformance bar.
 - **Tests + actually running the app** catch *mechanical breakage*. This is the
   truest reviewer and costs nothing — see §7.
 - **You** catch "is this what I actually wanted." No model can do this for you; it's
   why the plan always surfaces a plain-English summary you can sanity-check, and why
-  your judgment sits *between* drift-check and the git commit.
+  your judgment sits *between* code-review and the commit.
 
 ---
 
@@ -116,8 +119,8 @@ an independent checker). See §5.
 | `build.md` | System prompt for the `build` agent. |
 | `reviewer.md` | System prompt for the `reviewer` subagent. |
 | `drift-check.md` | System prompt for the `drift-check` subagent. |
-| `git.md` | System prompt for the `git` subagent. |
-| `PLAN.md` | **Generated at runtime** by the architect — the hand-off artifact. Not authored by you; deleted/replaced per task. |
+| `code-review.md` | System prompt for the `code-review` subagent. |
+| `PLAN.md` | **Generated at runtime** by the architect — the hand-off artifact. Not authored by you; persists in the working directory across tasks. |
 
 All files live at the **repo root**, side by side. The config references the prompts
 with `{file:./architect.md}` etc., resolved relative to `opencode.jsonc`'s location —
@@ -153,30 +156,33 @@ You describe a task (plain language)
    @drift-check ..... reads PLAN.md + git diff + new files,
         │            returns MATCHES PLAN or DRIFT FOUND
         ▼
+   @code-review ..... reads git diff + changed files,
+        │            returns PASS or ISSUES FOUND
+        ▼
    You run it / click it / look at it  ← the real final check
         │
         ▼
-   @git ............. shows what it's committing + message + branch,
-                      then commits & pushes (no separate confirmation —
-                      invoking it IS the decision to ship)
+   Tell build ......... you say "commit and push"; build shows what
+   "commit and push"   it's committing + message + branch, then
+                       commits & pushes (no separate confirmation)
 ```
 
 `plan` and `build` are **primary agents** — you switch between them with the **Tab**
 key, and they share one session, so the builder sees the plan and everything the
 architect read as live context (no lossy re-paste). `reviewer`, `drift-check`, and
-`git` are **subagents** — you invoke them by typing `@reviewer` / `@drift-check` /
-`@git` from whichever primary agent you're in (you do not Tab into them). They run in
-isolated child sessions, which is *desirable* for the checkers: a reviewer that
-inherited the architect's reasoning would just agree with it. The checkers read
-`PLAN.md` from disk instead, which is why the architect always writes the full plan
-to that file.
+`code-review` are **subagents** — you invoke them by typing `@reviewer` /
+`@drift-check` / `@code-review` from whichever primary agent you're in (you do not
+Tab into them). They run in isolated child sessions, which is *desirable* for the
+checkers: a reviewer that inherited the architect's reasoning would just agree with
+it. The checkers read `PLAN.md` from disk instead, which is why the architect always
+writes the full plan to that file.
 
 ### When to use the full chain vs. a short version
 The full chain is for **large or hard-to-reverse changes** where a wrong plan is
 expensive. For a small change, the honest minimum that protects you is: **plan →
-build → run it and look → @git.** The reviewer and drift-check are insurance you add
-when the stakes justify the extra passes (each is a real cost). Don't fire everything
-on a one-line tweak.
+build → run it and look → tell build to commit and push.** The reviewer, drift-check,
+and code-review are insurance you add when the stakes justify the extra passes (each
+is a real cost). Don't fire everything on a one-line tweak.
 
 ---
 
@@ -196,16 +202,22 @@ on a one-line tweak.
 - **The "quarantine" output split.** The architect writes the *full* plan to `PLAN.md`
   (so the reviewer has complete context) but shows you only the plain-English sections
   in chat. The chat is a readable summary; the file is the source of truth.
-- **The builder leaves changes uncommitted, and only `git` can commit/push.** The
-  builder is blocked from `git commit`/`git push` outright. Committing is concentrated
-  in one dedicated, you-invoked agent so there's a single deliberate gate where changes
-  leave the machine.
-- **The checkers and the git agent stay SEPARATE.** Tempting to merge drift-check and
-  git into one "check then ship" step — don't. Drift-check's value is *independent*
-  verification; an agent that both judges conformance and commits has a stake in
-  passing its own check. They also want opposite models (decorrelated reasoner vs.
-  cheap mechanical executor) and opposite permissions (read-only vs. push-capable).
-  Your judgment belongs *between* them.
+- **The builder leaves changes uncommitted, and commits only when you say to ship.**
+  The builder has access to `git commit`/`git push`, but its prompt instructs it to
+  leave everything uncommitted by default and only stage/commit/push when you
+  explicitly say "commit and push" or "ship it." The shipping gate is now a
+  prompt-level behavioral rule rather than a separate permission-denied agent —
+  accepted because fewer hand-offs on OpenCode's flaky multi-agent substrate outweigh
+  the weaker guard, and your explicit invocation is the real gate regardless of which
+  agent acts on it. Destructive operations (force-push, rebase, reset, etc.) remain
+  permission-denied.
+- **The checkers stay SEPARATE from each other and from the builder.** Tempting to
+  merge drift-check and code-review into one "post-build check" step — don't.
+  Drift-check's value is *independent* conformance verification; code-review's value is
+  *independent* quality inspection on top of that. An agent doing both would have
+  conflated standards. They also serve different operator decision points: drift-found
+  sends you back to plan; issues-found sends you back to build. Your judgment belongs
+  *between* them.
 - **Version verification.** The architect must never design around a third-party API
   from memory — it reads the pinned version in the dependency files, then web-searches
   that specific version's docs. Added after a real failure where a model confidently
@@ -259,7 +271,7 @@ reasoning models — low temperature can degrade their reasoning trace.
 | build | DeepSeek V4 Pro | `deepseek/` (direct) | 1.0 | same |
 | reviewer | GLM-5.1 | `opencode-go/` | **0.6** | Z.AI's own GLM-5.1 thinking-mode docs |
 | drift-check | Kimi K2.6 | `opencode-go/` | 1.0 | Moonshot's card — K2.6 thinking mode wants 1.0 |
-| git | Kimi K2.6 | `opencode-go/` | 1.0 | same |
+| code-review | Kimi K2.6 | `opencode-go/` | 1.0 | same |
 
 **Why the temperatures differ — and why you should not "tidy" them to match.** These
 are not arbitrary and not a style choice. Each is the value the *model's own makers*
@@ -276,19 +288,19 @@ model's reasoning trace was trained:
   the reviewer "should be more deterministic because it's a critic." The reviewer runs
   at 0.6 because *GLM* wants 0.6, full stop. (Its discipline against inventing fake
   flaws comes from its prompt, not from a cold temperature.)
-- **Kimi K2.6 → 1.0 (both drift-check and git).** Moonshot's model card recommends 1.0
+- **Kimi K2.6 → 1.0 (both drift-check and code-review).** Moonshot's model card recommends 1.0
   for thinking mode and notes K2.6 effectively wants its default sampling — overriding
   it downward fights the model. Both Kimi seats run at 1.0.
 
 The pattern to internalize: **temperature follows the model, not the role.** Two
-agents doing very different jobs (drift-check vs. git) share 1.0 because they share a
+agents doing very different jobs (drift-check vs. code-review) share 1.0 because they share a
 model; two "thinking-hard" agents (reviewer at 0.6, plan at 1.0) differ because they
 are different models. If you ever swap a model, look up *that* model's recommended
 thinking-mode temperature and use it — never carry over the number from the model it
 replaced. There's no reasoning-effort knob exposed for the Kimi seats, only temperature.
 
 **Provider note (mixed setup):** `plan`/`build` run on **direct DeepSeek**
-(`deepseek/`), while `reviewer`/`drift-check`/`git` run on **OpenCode Go**
+(`deepseek/`), while `reviewer`/`drift-check`/`code-review` run on **OpenCode Go**
 (`opencode-go/`) — a flat subscription with dollar-denominated usage limits,
 US/EU/Singapore hosting, and a zero-retention policy (your code is not used for
 training). DeepSeek V4 Pro is also on Go as `opencode-go/deepseek-v4-pro` — so you
@@ -323,13 +335,16 @@ behavior looks off, confirm its effective temperature is really 1.0 (see §9).
    builds exactly that, running tests as it goes, and leaves the changes uncommitted.
 6. *(Optional)* **Type `@drift-check`** to confirm the build matches the plan and that
    nothing was built in excess.
-7. **Run the thing yourself.** Open the app, click the button, use the feature. This
-   is the most important check and the one only you can do — a clean drift-check means
-   "the build followed the plan," NOT "this is what you wanted."
-8. **Type `@git` when you're ready to ship.** Invoking it IS your decision to commit —
-   it won't ask a second time. It prints the files, commit message, and target branch
-   as it commits and pushes (to the current branch, main included, by default). It
-   halts only on a real anomaly (detached HEAD, unexpected branch, apparent secret).
+7. *(Optional)* **Type `@code-review`** to check the actual code for bugs, security
+   issues, and anti-patterns. This catches quality problems drift-check won't see.
+8. **Run the thing yourself.** Open the app, click the button, use the feature. This
+   is the most important check and the one only you can do — a clean drift-check and
+   code-review mean "the build followed the plan and the code looks sound," NOT "this
+   is what you wanted."
+9. **Tell the build agent "commit and push" when you're ready to ship.** It prints
+   the files, commit message, and target branch before acting (your last-chance
+   visibility), then commits and pushes to the current branch. It halts on secrets,
+   detached HEAD, or anything genuinely anomalous.
 
 ---
 
@@ -337,7 +352,7 @@ behavior looks off, confirm its effective temperature is really 1.0 (see §9).
 
 This pipeline sits on top of OpenCode's multi-agent layer, which (as of ~1.15) has
 several **version-dependent quirks**. They fail *silently*, which is the dangerous
-kind. Some of these are not theoretical — see the note on the git agent.
+kind.
 
 - **Per-agent reasoning effort may not apply.** `reasoningEffort` is parsed but hasn't
   always been enforced per-agent, and the GUI reasoning selector can override config
@@ -346,7 +361,7 @@ kind. Some of these are not theoretical — see the note on the git agent.
   when a configured effort is active — don't trust that label.
 - **Bash permission patterns are prefix-matched and proved UNRELIABLE in practice.**
   In a real run, a `git branch` command was denied even though `git branch*` was in
-  the allow list. The matching is flaky. This matters most for the **git agent's
+  the allow list. The matching is flaky. This matters most for the **build agent's
   force-push deny**: do not assume `git push --force*` actually blocks a force-push
   until you've tested it (§9). A force-push is the one git action that can lose work
   irreversibly, and it's guarded by the layer we've watched misbehave.
@@ -354,9 +369,11 @@ kind. Some of these are not theoretical — see the note on the git agent.
   Interactive desktop use should honor them, but test it.
 - **Context inheritance for subagents is fuzzy.** This is why hand-offs go through
   `PLAN.md` on disk rather than relying on what a subagent "sees" from the parent.
+  All three checker subagents (reviewer, drift-check, code-review) carry explicit
+  instructions to trust disk state over any inherited context that conflicts with it.
 
 **Bigger-picture caveat:** this is a sophisticated pipeline (five agents, two
-providers, flaky reasoning-effort fields, a remote-push permission). For a small
+providers, flaky reasoning-effort fields). For a small
 codebase and product-driven work, there's a real question of whether it's *more
 machinery than the job needs* — every agent is another hand-off on a flaky substrate
 you can't easily debug. If a single strong coding agent reading the repo directly
@@ -368,12 +385,12 @@ is better.
 
 ## 9. Verifying it actually works (do this once, on a throwaway repo)
 
-Test silent-failure points first, in order. Use a sacrificial git repo — and for the
-git agent, a **throwaway GitHub remote**, not anything real.
+Test silent-failure points first, in order. Use a sacrificial git repo — and for
+the build agent's push tests, a **throwaway GitHub remote**, not anything real.
 
-**Stage 0 — Sandbox.** New folder, `git init`, a trivial starter project, the six
-files at root, one initial commit (gives drift-check/git a clean `HEAD`). Point it at
-a throwaway GitHub repo so `@git` push tests are safe.
+**Stage 0 — Sandbox.** New folder, `git init`, a trivial starter project, the
+six files at root, one initial commit (gives drift-check/code-review a clean `HEAD`).
+Point it at a throwaway GitHub repo so push tests are safe.
 
 **Stage 1 — Config loads, models resolve.** Restart OpenCode. Confirm: you land in
 `plan`; all five agents appear; each is on the model you assigned (ask "which model
@@ -384,8 +401,8 @@ mixed-provider setup means check that BOTH the DeepSeek-direct and the Go agents
 - Ask `plan` to edit a source file → must **refuse**.
 - Ask `plan` to write `PLAN.md` → must **succeed**.
 - Ask `plan` to run `git push` → must **refuse**.
-- In `build`, ask it to `git commit` → must **refuse**.
-- **Critical:** ask `@git` to attempt `git push --force origin <branch>` AND
+- In `build`, ask it to implement a feature (shows git commit/push are allowed).
+- **Critical:** ask the `build` agent to attempt `git push --force origin <branch>` AND
   `git push origin <branch> --force` → both must **refuse**. Given the proven
   flakiness of pattern-matching, do not skip this. If the trailing-flag form slips
   through, broaden the deny pattern before trusting the agent unattended.
@@ -409,8 +426,12 @@ returning OK"):
 - `@drift-check`: confirm its git commands actually execute and it returns a verdict.
   Bonus: have the builder add a stray file the plan didn't mention, and confirm
   drift-check flags it under OUT-OF-SCOPE (tests the excess-detection path).
-- `@git`: confirm it prints the file list/message/branch and pushes to the throwaway
-  remote correctly.
+- `@code-review`: confirm it reads the diff and returns a code quality verdict.
+  Bonus: have the builder introduce a minor bug (e.g. off-by-one), and confirm
+  code-review flags it.
+- Tell the `build` agent "commit and push": confirm it prints the file
+  list/message/branch before acting, then commits and pushes correctly. Verify
+  `PLAN.md` stays in the working directory (not staged, not committed, not deleted).
 
 **Stage 5 — Kimi endpoint check.** Confirm the Kimi seats' effective temperature
 isn't being scaled by the endpoint format, and that drift-check's verdict isn't
@@ -431,8 +452,9 @@ tweak — tells you whether this pipeline earns its complexity for *your* work.
 | Review the plan | type `@reviewer` |
 | Build it | press **Tab** → `build`, tell it to implement |
 | Check the build matches the plan | type `@drift-check` |
+| Check the code for bugs | type `@code-review` |
 | Confirm it's what you wanted | run/click/use it yourself |
-| Commit & push | type `@git` (invoking it ships; it shows what it does as it goes) |
+| Commit & push | tell `build` "commit and push" (it shows what it does before acting) |
 | Plan got flagged | tell `plan` to address the review; it rewrites `PLAN.md` |
 | Builder got stuck | it honors the `BUILD ESCALATION` halt condition and reports back |
 
@@ -440,10 +462,8 @@ tweak — tells you whether this pipeline earns its complexity for *your* work.
 
 ## 11. Status
 
-As of this writing the pipeline is **designed and assembled but not yet fully
-verified** end-to-end. One real run has confirmed two things: the `@git` agent works
-and reaches the commit/push step — and that OpenCode's permission pattern-matching is
-genuinely flaky (a `git branch` command was wrongly denied). Treat §9 as a required
-checklist, not an optional one, before trusting this on real code — especially the
-force-push test, since the guard protecting your remote runs on the layer that has
-already misbehaved.
+As of this writing the pipeline is **v2 — code-review agent added, git agent
+removed, PLAN.md persists, context inheritance hardened.** Not yet fully verified
+end-to-end. Treat §9 as a required checklist, not an optional one, before trusting
+this on real code — especially the force-push test on the build agent, since the
+guard protecting your remote runs on the layer that has already misbehaved.

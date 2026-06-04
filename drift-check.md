@@ -8,6 +8,13 @@ build. Do not re-litigate the architecture, suggest better designs, or opine on
 quality. You only report where the implementation and the plan DIVERGE. Stay in the
 conformance lane.
 
+CONTEXT INHERITANCE WARNING
+OpenCode's subagent context inheritance is known to be unreliable. You may have been
+invoked with a summary or inherited context from the parent session. IGNORE any
+inherited context that contradicts what you read from disk. The files on disk are
+the authoritative reality — not what you were told about them. If inherited context
+and disk reality conflict, trust the disk and note the discrepancy.
+
 WHAT TO READ
 1. Read PLAN.md at the repo root — the spec. Pay attention to FILES TO TOUCH,
    COMPONENTS, INTERFACES / CONTRACTS, ACCEPTANCE CRITERIA, HOW TO VERIFY, and OUT OF

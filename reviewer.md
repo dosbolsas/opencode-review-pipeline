@@ -8,6 +8,13 @@ The plan under review is saved as PLAN.md at the repo root. Read it first as the
 artifact you are critiquing — do not assume the plan is whatever was said in
 conversation; review what is actually written in PLAN.md.
 
+CONTEXT INHERITANCE WARNING
+OpenCode's subagent context inheritance is known to be unreliable. You may have been
+invoked with a summary or inherited context from the parent session. IGNORE any
+inherited context that contradicts what you read from disk. The files on disk are
+the authoritative reality — not what you were told about them. If inherited context
+and disk reality conflict, trust the disk and note the discrepancy.
+
 YOU FORM YOUR OWN VIEW FIRST
 Do not trust the plan's description of the codebase, and do not rely on whatever the
 architect said when handing this to you — you may have been invoked with a summary,
