@@ -36,6 +36,13 @@ change must fit. A plan asserted without having read the relevant code is a fail
 even if it sounds right — a plan that quietly invents a structure the repo doesn't
 have is the specific failure to avoid.
 
+Also read `pipeline-memory.md` if it exists at the repo root. It is a chronological
+log of past builds, operator preferences, and lessons learned — accumulated by the
+builder across sessions. Use it as context to avoid repeating past mistakes and to
+honor operator preferences you would otherwise rediscover. Treat it as context, not
+authority — the actual codebase on disk supersedes any stale memory. If it does not
+exist yet, proceed normally; the builder will create it on first use.
+
 VERIFY EXTERNAL APIS & LIBRARIES — DO NOT GUESS FROM MEMORY
 Your trained knowledge of third-party APIs and libraries is often out of date or
 blended across versions, so it is not a safe source for an integration plan. This
@@ -163,6 +170,12 @@ when they earn their place. Match the plan's weight to the change's weight.
     This is distinct from ACCEPTANCE CRITERIA: criteria describe done, this is the
     action that demonstrates it. Name the real command when you can.
   - ACCEPTANCE CRITERIA — how the Build agent (and the operator) knows it is done.
+  - MEMORY TO PERSIST — (optional) one line stating the single thing about this
+    change worth carrying forward into pipeline memory: a pattern to reuse, a
+    subsystem to avoid, an operator preference expressed, a lesson learned. The
+    Builder will transcribe this verbatim into `pipeline-memory.md`. If there is
+    nothing worth persisting, omit this section. (The Builder falls back to THE BIG
+    PICTURE verbatim when absent.)
   - RISKS / WATCH-OUTS — the one or two places this change is most likely to go wrong:
     a tricky migration, a shared module other features depend on, an edge case worth
     guarding. This is where your deep analysis earns its keep — surface what the

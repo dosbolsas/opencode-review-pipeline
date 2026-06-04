@@ -121,6 +121,7 @@ mistakes that matter. Decorrelation is the point.
 | `drift-check.md` | System prompt for the `drift-check` subagent. |
 | `code-review.md` | System prompt for the `code-review` subagent. |
 | `PLAN.md` | **Generated at runtime** by the architect — the hand-off artifact. Not authored by you; persists in the working directory across tasks. |
+| `pipeline-memory.md` | **Generated at runtime** by the builder — a chronological log of past builds, lessons, and operator preferences. Created on first use; never committed. Read by the architect before planning, read and written by the builder before shipping. |
 
 All files live at the **repo root**, side by side. The config references the prompts
 with `{file:./architect.md}` etc., resolved relative to `opencode.jsonc`'s location —
@@ -135,8 +136,8 @@ config and is safe to commit to git, so the whole pipeline travels with the repo
 You describe a task (plain language)
         │
         ▼
- ┌──────────────┐   reads repo, verifies API versions,
- │  plan (Max)  │   writes the full plan to PLAN.md,
+ ┌──────────────┐   reads repo, reads pipeline-memory.md,
+ │  plan (Max)  │   verifies API versions, writes PLAN.md,
  └──────────────┘   shows you a plain-English summary
         │
         ▼
@@ -148,9 +149,9 @@ You describe a task (plain language)
    Tab to build ..... shared session: builder inherits the plan as live context
         │
         ▼
- ┌──────────────┐   reads PLAN.md, implements exactly that,
- │ build (High) │   runs tests, leaves changes UNCOMMITTED
- └──────────────┘
+ ┌──────────────┐   reads PLAN.md, reads pipeline-memory.md,
+ │ build (High) │   implements exactly that, runs tests,
+ └──────────────┘   leaves changes UNCOMMITTED
         │
         ▼
    @drift-check ..... reads PLAN.md + git diff + new files,
@@ -163,8 +164,8 @@ You describe a task (plain language)
         │
         ▼
    Tell build ......... you say "commit and push"; build shows what
-   "commit and push"   it's committing + message + branch, then
-                       commits & pushes (no separate confirmation)
+   "commit and push"   it's committing → writes memory entry →
+                        commits & pushes (no separate confirmation)
 ```
 
 `plan` and `build` are **primary agents** — you switch between them with the **Tab**
@@ -176,6 +177,29 @@ Tab into them). They run in isolated child sessions, which is *desirable* for th
 checkers: a reviewer that inherited the architect's reasoning would just agree with
 it. The checkers read `PLAN.md` from disk instead, which is why the architect always
 writes the full plan to that file.
+
+### How pipeline memory works
+
+`pipeline-memory.md` is the pipeline's persistent learning log — it accumulates
+across sessions so the architect and builder don't start cold every time. It's
+created automatically by the builder on first use and never committed.
+
+- **Architect reads it before planning** — uses it as context to avoid repeating past
+  mistakes and to honor operator preferences already expressed. (Treats it as
+  context, not authority — the actual codebase on disk supersedes stale memory.)
+- **Builder reads it before building** — checks for past failures on similar files
+  and operator preferences.
+- **Builder writes it before shipping** — after staging files but before committing,
+  the builder appends a dated entry recording what was built, key insights, and
+  lessons. (This ordering means if the memory write fails, the build escalation can
+  halt before anything is pushed.)
+- **No automatic cleanup** — if the file exceeds ~300 lines, the builder adds a note
+  suggesting the operator trim old entries. The operator manages memory manually;
+  automatic condense or rewrite is deliberately avoided (read-modify-write on a plain
+  markdown file with no git history is fragile).
+- **Local state only** — like PLAN.md's operational content, memory is never
+  committed and doesn't travel across machines. Switching machines means starting
+  fresh.
 
 ### When to use the full chain vs. a short version
 The full chain is for **large or hard-to-reverse changes** where a wrong plan is
@@ -223,6 +247,15 @@ is a real cost). Don't fire everything on a one-line tweak.
   that specific version's docs. Added after a real failure where a model confidently
   planned against an outdated API. Recording the verified version in the plan is what
   makes it actually do this.
+- **Persistent pipeline memory.** The pipeline accumulates learnings in
+  `pipeline-memory.md` — a chronological log of past builds, operator preferences,
+  and failures, created automatically by the builder on first use and never committed.
+  The architect reads it before planning; the builder reads it before building and
+  writes to it before shipping (after staging, before committing — so a write failure
+  halts before anything is pushed). No plugins, no structured sections, no automatic
+  cleanup — just a markdown file with dated entries. The architect's discoveries reach
+  memory through an optional MEMORY TO PERSIST line in PLAN.md; the builder transcribes
+  it verbatim.
 
 ### What's in PLAN.md (the actual product)
 
@@ -332,7 +365,8 @@ behavior looks off, confirm its effective temperature is really 1.0 (see §9).
 4. *(Optional, for non-trivial work)* **Type `@reviewer`.** If it says REVISE, ask the
    architect to address the flaws; it will rewrite `PLAN.md`.
 5. **Press Tab to switch to `build`.** Tell it to implement. It reads `PLAN.md` and
-   builds exactly that, running tests as it goes, and leaves the changes uncommitted.
+   `pipeline-memory.md` (for past lessons), builds exactly that, runs tests as it
+   goes, and leaves the changes uncommitted.
 6. *(Optional)* **Type `@drift-check`** to confirm the build matches the plan and that
    nothing was built in excess.
 7. *(Optional)* **Type `@code-review`** to check the actual code for bugs, security
@@ -342,9 +376,9 @@ behavior looks off, confirm its effective temperature is really 1.0 (see §9).
    code-review mean "the build followed the plan and the code looks sound," NOT "this
    is what you wanted."
 9. **Tell the build agent "commit and push" when you're ready to ship.** It prints
-   the files, commit message, and target branch before acting (your last-chance
-   visibility), then commits and pushes to the current branch. It halts on secrets,
-   detached HEAD, or anything genuinely anomalous.
+   the files, commit message, and target branch, writes a memory entry to
+   `pipeline-memory.md`, then commits and pushes to the current branch. It halts on
+   secrets, detached HEAD, or anything genuinely anomalous.
 
 ---
 
@@ -432,6 +466,21 @@ returning OK"):
 - Tell the `build` agent "commit and push": confirm it prints the file
   list/message/branch before acting, then commits and pushes correctly. Verify
   `PLAN.md` stays in the working directory (not staged, not committed, not deleted).
+  Also verify: `pipeline-memory.md` was created (or appended to) with a properly
+  formatted memory entry containing all five fields (Built, Key insight, Verified,
+  Failures & lessons, Operator notes). Confirm `pipeline-memory.md` is NOT staged
+  and NOT in the commit (`git show HEAD --stat` shows only source files).
+- **Memory read-back:** start a second session and describe a trivial task to `plan`.
+  Confirm its CONTEXT I VERIFIED line mentions `pipeline-memory.md` and the plan
+  reflects knowledge from a previous build (e.g., references a past operator
+  preference or avoids a known-fragile subsystem).
+- **Memory fails-before-ship:** have the builder attempt a build where the memory
+  write is deliberately broken (e.g., `pipeline-memory.md` is a directory). Confirm
+  the builder stops without committing or pushing — the escalation halts before
+  anything ships.
+- **Memory size notification:** manually pad `pipeline-memory.md` to >300 lines,
+  run a build, confirm the new entry contains the "consider trimming" note and no
+  automatic condense or truncation occurred.
 
 **Stage 5 — Kimi endpoint check.** Confirm the Kimi seats' effective temperature
 isn't being scaled by the endpoint format, and that drift-check's verdict isn't
