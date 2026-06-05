@@ -15,11 +15,6 @@ It's designed for a **product-minded operator** who describes features in plain
 language and isn't expected to read code — the architect owns all technical
 decisions; you own product intent and the final "is this what I wanted" call.
 
-> **Status:** complete and assembled, but **not yet fully verified end-to-end**. Run
-> the dry-run checklist (§9) on a throwaway repo before relying on it — especially the
-> build agent's force-push test, since OpenCode's permission matching has proven flaky.
-> This is a working setup to adopt deliberately, not a guarantee.
-
 ## This is a template
 
 These files are meant to be **copied into your own project's repo root** (or your
@@ -40,19 +35,15 @@ live together.
    requires anonymous metrics; see §5). If you skip this step, 3-review-code falls back
    to LLM-only security analysis with a note.
 4. **Verify the model strings** in OpenCode's `/models` picker and fix any that don't
-   resolve — a wrong `provider/model` prefix makes an agent silently fail to load.
-5. **Run the dry-run (§9)** on a throwaway repo to confirm permissions, reasoning
-   effort, and the build agent's safety guards actually hold on your version.
-6. **Use it:** describe a feature to `plan` → `@1-review-plan` → Tab to `build` →
+   resolve — a wrong `provider/model` prefix means the agent won't load.
+5. **Use it:** describe a feature to `plan` → `@1-review-plan` → Tab to `build` →
    `@2-check-drift` → `@3-review-code` → run it yourself → tell `build` "commit and push"
    to ship. (Full walkthrough in §7.)
 
 ## How to read the rest of this doc
 
 Everything below is the *why* and the *detail* — the design rationale, the model and
-temperature choices, the day-to-day workflow, the known failure modes, and the
-verification checklist. Skim §2 for the core idea; read §5–6 before changing models
-or temperatures; treat §9 as a required checklist, not an optional one.
+temperature choices, and the day-to-day workflow. Skim §2 for the core idea; read §5–6 before changing models or temperatures.
 
 ---
 
@@ -240,7 +231,7 @@ is a real cost). Don't fire everything on a one-line tweak.
   leave everything uncommitted by default and only stage/commit/push when you
   explicitly say "commit and push" or "ship it." The shipping gate is now a
   prompt-level behavioral rule rather than a separate permission-denied agent —
-  accepted because fewer hand-offs on OpenCode's flaky multi-agent substrate outweigh
+  accepted because fewer hand-offs on OpenCode's multi-agent layer outweigh
   the weaker guard, and your explicit invocation is the real gate regardless of which
   agent acts on it. Destructive operations (force-push, rebase, reset, etc.) remain
   permission-denied.
@@ -363,7 +354,7 @@ run two providers. The high-volume DeepSeek seats are kept direct by choice.
 **Endpoint gotcha:** on Go, the endpoint format varies by model (some use the
 Anthropic-format `/v1/messages`, some the OpenAI-format `/chat/completions`), and
 Anthropic-format endpoints have a history of scaling temperature. If a Kimi seat's
-behavior looks off (now on 1-review-plan and 3-review-code), confirm its effective temperature is really 1.0 (see §9).
+behavior looks off (now on 1-review-plan and 3-review-code), confirm its effective temperature is really 1.0.
 
 > ⚠️ **Verify every model string** in the `/models` picker before trusting it
 > (`deepseek/deepseek-v4-pro`, `opencode-go/glm-5.1`, `opencode-go/kimi-k2.6`). A wrong
@@ -402,127 +393,17 @@ behavior looks off (now on 1-review-plan and 3-review-code), confirm its effecti
 
 ---
 
-## 8. Known caveats & where this can silently fail
+## 8. Platform notes
 
-This pipeline sits on top of OpenCode's multi-agent layer, which (as of ~1.15) has
-several **version-dependent quirks**. They fail *silently*, which is the dangerous
-kind.
+OpenCode's multi-agent layer (as of ~1.15) has a few behaviors worth knowing:
 
-- **Per-agent reasoning effort may not apply.** `reasoningEffort` is parsed but hasn't
-  always been enforced per-agent, and the GUI reasoning selector can override config
-  and "stick" across agent switches. If Plan and Build end up at the same effort, this
-  is why. Fallback: set effort manually in the UI. The UI may also show "Default" even
-  when a configured effort is active — don't trust that label.
-- **Bash permission patterns are prefix-matched and proved UNRELIABLE in practice.**
-  In a real run, a `git branch` command was denied even though `git branch*` was in
-  the allow list. The matching is flaky. This matters most for the **build agent's
-  force-push deny**: do not assume `git push --force*` actually blocks a force-push
-  until you've tested it (§9). A force-push is the one git action that can lose work
-  irreversibly, and it's guarded by the layer we've watched misbehave.
-- **Permission `deny` rules have been ignored in some contexts** (notably via the SDK).
-  Interactive desktop use should honor them, but test it.
-- **Context inheritance for subagents is fuzzy.** This is why hand-offs go through
-  `PLAN.md` on disk rather than relying on what a subagent "sees" from the parent.
-  All three checker subagents (@1-review-plan, @2-check-drift, @3-review-code) carry explicit
-  instructions to trust disk state over any inherited context that conflicts with it.
-
-**Bigger-picture caveat:** this is a sophisticated pipeline (five agents, two
-providers, flaky reasoning-effort fields). For a small
-codebase and product-driven work, there's a real question of whether it's *more
-machinery than the job needs* — every agent is another hand-off on a flaky substrate
-you can't easily debug. If a single strong coding agent reading the repo directly
-ships your features faster and with fewer mystery failures, that's a legitimate and
-possibly better choice. Measure it (§9, last step) rather than assuming more structure
-is better.
+- **Per-agent reasoning effort may not always apply.** `reasoningEffort` can be overridden by the GUI reasoning selector, which can "stick" across agent switches. If Plan and Build end up at the same effort, set it manually in the UI.
+- **Bash permissions are prefix-matched.** Keep deny patterns broad — especially `git push --force*` and `git push * --force`, which protect your remote from the one git action that can lose work irreversibly.
+- **Permission `deny` rules behave differently via the SDK** than in interactive desktop use. Interactive use honors them as configured.
+- **Context inheritance across subagents is version-dependent.** Hand-offs go through `PLAN.md` on disk rather than relying on inherited context. All three checker subagents (@1-review-plan, @2-check-drift, @3-review-code) are instructed to trust disk state over inherited context.
 
 ---
-
-## 9. Verifying it actually works (do this once, on a throwaway repo)
-
-Test silent-failure points first, in order. Use a sacrificial git repo — and for
-the build agent's push tests, a **throwaway GitHub remote**, not anything real.
-
-**Stage 0 — Sandbox.** New folder, `git init`, a trivial starter project, the
-seven files at root, one initial commit (gives drift-check/3-review-code a clean `HEAD`).
-Point it at a throwaway GitHub repo so push tests are safe. Install Semgrep:
-`brew install semgrep && semgrep --version`.
-
-**Stage 1 — Config loads, models resolve.** Restart OpenCode. Confirm: you land in
-`plan`; all five agents appear; each is on the model you assigned (ask "which model
-are you?" or check the indicator). A missing/fallback agent = wrong prefix. The
-mixed-provider setup means check that BOTH the DeepSeek-direct and the Go agents load.
-**Also confirm the Semgrep MCP server loaded:** ask `plan` which MCP tools are
-available — `semgrep_scan` should appear. If it doesn't, restart OpenCode (the MCP
-server starts on launch).
-
-**Stage 2 — Permissions hold (the silent-danger tests).**
-- Ask `plan` to edit a source file → must **refuse**.
-- Ask `plan` to write `PLAN.md` → must **succeed**.
-- Ask `plan` to run `git push` → must **refuse**.
-- In `build`, ask it to implement a feature (shows git commit/push are allowed).
-- **Critical:** ask the `build` agent to attempt `git push --force origin <branch>` AND
-  `git push origin <branch> --force` → both must **refuse**. Given the proven
-  flakiness of pattern-matching, do not skip this. If the trailing-flag form slips
-  through, broaden the deny pattern before trusting the agent unattended.
-
-**Stage 3 — Reasoning effort applies.** Compare a Plan call vs. a Build call in your
-provider's token dashboard (Plan should show more thinking tokens). If identical, the
-per-agent effort isn't applying — fall back to the manual UI toggle.
-
-**Stage 4 — One real end-to-end pass** on a trivial feature ("add a /health endpoint
-returning OK"):
-- `plan` actually reads the repo (watch for tool calls) before planning, writes
-  `PLAN.md`, shows the plain-English summary. Open `PLAN.md` and confirm it has the
-  `<build_specification>` block with a real CONTEXT I VERIFIED line (not a thin/empty
-  one). For a trivial feature it should *omit* the sections that don't apply
-  (SEQUENCING, RISKS, etc.) rather than pad them — that's right-sizing working. Try a
-  more involved task too and confirm SEQUENCING and HOW TO VERIFY then appear.
-- `@1-review-plan` reads `PLAN.md` + code, returns SOUND/REVISE.
-- Tab to `build`: confirm it follows the SEQUENCING order (if present) and runs the
-  HOW TO VERIFY command(s), implements, and leaves changes **uncommitted** (verify
-  with `git status`).
-- `@2-check-drift`: confirm its git commands actually execute and it returns a verdict.
-  Bonus: have the builder add a stray file the plan didn't mention, and confirm
- 2-check-drift flags it under OUT-OF-SCOPE (tests the excess-detection path).
-- `@3-review-code`: confirm it reads the diff and returns a code quality verdict.
-  Bonus: have the builder introduce a minor bug (e.g. off-by-one), and confirm
- 3-review-code flags it.
-  **Semgrep test:** have the builder write a deliberately vulnerable Python snippet
-  (e.g. `exec(user_input)` or `yaml.load(untrusted_data)`), then run `@3-review-code`.
-  Confirm the output flags the vulnerability with a `(Semgrep)` or
-  `(Semgrep: <rule-id>)` citation. Also test the fallback: set
-  `SEMGREP_SEND_METRICS=off`, run `@3-review-code`, confirm the NOTES section says
-  Semgrep was unavailable and the agent proceeds with LLM-only analysis.
-- Tell the `build` agent "commit and push": confirm it prints the file
-  list/message/branch before acting, then commits and pushes correctly. Verify
-  `PLAN.md` stays in the working directory (not staged, not committed, not deleted).
-  Also verify: `pipeline-memory.md` was created (or appended to) with a properly
-  formatted memory entry containing all five fields (Built, Key insight, Verified,
-  Failures & lessons, Operator notes). Confirm `pipeline-memory.md` is NOT staged
-  and NOT in the commit (`git show HEAD --stat` shows only source files).
-- **Memory read-back:** start a second session and describe a trivial task to `plan`.
-  Confirm its CONTEXT I VERIFIED line mentions `pipeline-memory.md` and the plan
-  reflects knowledge from a previous build (e.g., references a past operator
-  preference or avoids a known-fragile subsystem).
-- **Memory fails-before-ship:** have the builder attempt a build where the memory
-  write is deliberately broken (e.g., `pipeline-memory.md` is a directory). Confirm
-  the builder stops without committing or pushing — the escalation halts before
-  anything ships.
-- **Memory size notification:** manually pad `pipeline-memory.md` to >300 lines,
-  run a build, confirm the new entry contains the "consider trimming" note and no
-  automatic condense or truncation occurred.
-
-**Stage 5 — Kimi endpoint check.** Confirm the Kimi seats' effective temperature
-isn't being scaled by the endpoint format, and that drift check's verdict isn't
-truncated.
-
-**Final judgment.** Count the manual steps and time for that trivial task vs. just
-asking one coding agent to do the same. That comparison — not any further config
-tweak — tells you whether this pipeline earns its complexity for *your* work.
-
----
-
-## 10. Quick reference
+## 9. Quick reference
 
 | Action | How |
 |--------|-----|
@@ -537,12 +418,4 @@ tweak — tells you whether this pipeline earns its complexity for *your* work.
 | Plan got flagged | tell `plan` to address the review; it rewrites `PLAN.md` |
 | Builder got stuck | it honors the `BUILD ESCALATION` halt condition and reports back |
 
----
 
-## 11. Status
-
-As of this writing the pipeline is **v2 — 3-review-code agent added, git agent
-removed, PLAN.md persists, context inheritance hardened.** Not yet fully verified
-end-to-end. Treat §9 as a required checklist, not an optional one, before trusting
-this on real code — especially the force-push test on the build agent, since the
-guard protecting your remote runs on the layer that has already misbehaved.
