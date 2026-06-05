@@ -57,12 +57,12 @@
         }
       }
     },
-    "reviewer": {
-      "description": "Independent architecture reviewer. Reads PLAN.md and the codebase itself and critiques the proposed plan for subtle reasoning and judgment flaws BEFORE any code is written. Invoke with @reviewer after a plan is produced and before building.",
+    "1-review-plan": {
+      "description": "Step 1: @1-review-plan — reviews the PLAN for judgment flaws BEFORE any code is written.",
       "mode": "subagent",
       "model": "opencode-go/glm-5.1",
       "temperature": 0.6,
-      "prompt": "{file:./reviewer.md}",
+      "prompt": "{file:./1-review-plan.md}",
       "permission": {
         "edit": "deny",
         "write": "deny",
@@ -75,12 +75,12 @@
         }
       }
     },
-    "drift-check": {
-      "description": "Conformance checker. Compares the implementation against PLAN.md and reports only where the build diverged from the spec (omissions, deviations, out-of-scope additions). Invoke with @drift-check AFTER a build. Does not judge plan quality.",
+    "2-check-drift": {
+      "description": "Step 2: @2-check-drift — checks whether the implementation matches PLAN.md AFTER a build (omissions, deviations, out-of-scope). Does not judge plan quality.",
       "mode": "subagent",
       "model": "opencode-go/kimi-k2.6",
       "temperature": 1.0,
-      "prompt": "{file:./drift-check.md}",
+      "prompt": "{file:./2-check-drift.md}",
       "permission": {
         "edit": "deny",
         "write": "deny",
@@ -92,12 +92,12 @@
         }
       }
     },
-    "code-review": {
-      "description": "Code quality reviewer. Reads the diff and changed files after a build, checks for bugs, anti-patterns, security issues, and correctness. Invoke with @code-review AFTER a build and drift-check. Does not check conformance (that's drift-check's job).",
+    "3-review-code": {
+      "description": "Step 3: @3-review-code — reviews CODE QUALITY (bugs, security via Semgrep, anti-patterns) AFTER drift-check. Does not check conformance (that's 2-check-drift's job).",
       "mode": "subagent",
       "model": "opencode-go/kimi-k2.6",
       "temperature": 1.0,
-      "prompt": "{file:./code-review.md}",
+      "prompt": "{file:./3-review-code.md}",
       "permission": {
         "edit": "deny",
         "write": "deny",

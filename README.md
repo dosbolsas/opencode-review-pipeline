@@ -35,16 +35,16 @@ live together.
    OpenCode Go for the review/check/code-review agents — so authenticate both (`/connect`).
    You can also consolidate everything onto one provider; see §6.
 3. **Install Semgrep** for deterministic security scanning during code review:
-   `brew install semgrep`. One-time; the code-review agent uses it automatically.
+   `brew install semgrep`. One-time; the 3-review-code agent uses it automatically.
    Ensure `SEMGREP_SEND_METRICS` is not set to `off` (the default `auto` config
-   requires anonymous metrics; see §5). If you skip this step, code-review falls back
+   requires anonymous metrics; see §5). If you skip this step,3-review-code falls back
    to LLM-only security analysis with a note.
 4. **Verify the model strings** in OpenCode's `/models` picker and fix any that don't
    resolve — a wrong `provider/model` prefix makes an agent silently fail to load.
 5. **Run the dry-run (§9)** on a throwaway repo to confirm permissions, reasoning
    effort, and the build agent's safety guards actually hold on your version.
-6. **Use it:** describe a feature to `plan` → `@reviewer` → Tab to `build` →
-   `@drift-check` → `@code-review` → run it yourself → tell `build` "commit and push"
+6. **Use it:** describe a feature to `plan` → `@1-review-plan` → Tab to `build` →
+   `@2-check-drift` → `@3-review-code` → run it yourself → tell `build` "commit and push"
    to ship. (Full walkthrough in §7.)
 
 ## How to read the rest of this doc
@@ -62,7 +62,7 @@ The operator is assumed to be a **product-minded person, not a working engineer*
 You describe what you want in plain, UX-flavored language ("add a button that shows
 the user's recent orders"), and the pipeline turns that into a technical plan,
 builds it, checks the result, and (when you say so) commits it. You are not expected
-to read code to use this — but you **are** the final reviewer of whether the result
+to read code to use this — but you **are** the final 1-review-plan of whether the result
 is what you actually wanted (see §7).
 
 Everything below is tuned around that assumption. If you are an engineer feeding
@@ -83,38 +83,38 @@ caught by a different perspective:
 |------|-------|-----|-------|----------------|
 | **Architect** | `plan` | Reads the codebase, decides the architecture, writes the plan. Touches no source code. | DeepSeek V4 Pro (Think Max) | Strongest open reasoner; deep thinking is the whole value here, and verbosity doesn't matter for a few planning calls. |
 | **Builder** | `build` | Implements the plan to the letter. Runs tests. Leaves changes uncommitted; commits only when told to ship. | DeepSeek V4 Pro (Think High) | Same model, lower reasoning effort — strong execution without the full Max token burn across a build loop. |
-| **Reviewer** | `reviewer` | Independently critiques the *plan* for subtle judgment flaws, before any code is written. | GLM-5.1 | **Different lab** from the builder → decorrelated blind spots. Strong reasoner for a pure-judgment task. |
-| **Drift-Check** | `drift-check` | After the build, checks whether the implementation matches the plan — including anything built *in excess* of the spec. | Kimi K2.6 | **Different lab** from the builder → decorrelation at the second checkpoint. Strong at multi-step tool loops (status → diff → read → reconcile), which is exactly this job. |
-| **Code-Review** | `code-review` | After the build and drift-check, examines the actual code for bugs, security issues, anti-patterns, and correctness. Uses Semgrep for deterministic SAST behind its LLM judgment. Does NOT check conformance. | Kimi K2.6 | Different lab from the builder; catches implementation quality problems drift-check explicitly ignores. Semgrep adds a non-LLM guardrail — 5000+ rules, 35+ languages. |
+| **Plan Review** | `1-review-plan` | Step 1. Independently critiques the *plan* for subtle judgment flaws, before any code is written. | GLM-5.1 | **Different lab** from the builder → decorrelated blind spots. Strong reasoner for a pure-judgment task. |
+| **Drift Check** | `2-check-drift` | Step 2. After the build, checks whether the implementation matches the plan — including anything built *in excess* of the spec. | Kimi K2.6 | **Different lab** from the builder → decorrelation at the second checkpoint. Strong at multi-step tool loops (status → diff → read → reconcile), which is exactly this job. |
+| **Code Review** | `3-review-code` | Step 3. After the build and drift-check, examines the actual code for bugs, security issues, anti-patterns, and correctness. Uses Semgrep for deterministic SAST behind its LLM judgment. Does NOT check conformance. | Kimi K2.6 | Different lab from the builder; catches implementation quality problems `2-check-drift` explicitly ignores. Semgrep adds a non-LLM guardrail — 5000+ rules, 35+ languages. |
 
-**The single most important principle:** the Reviewer, Drift-Check, and Code-Review
+**The single most important principle:** the Plan Review, Drift Check, and Code Review
 are on *different model families* from the Builder **on purpose**. If every checker
 were DeepSeek, they'd share DeepSeek's blind spots and wave through exactly the
 mistakes that matter. Decorrelation is the point.
 
 ### What each checker can and cannot catch
-- The **Reviewer** catches *errors of judgment* — a plan that would compile and pass
+- The **Plan Review** catches *errors of judgment* — a plan that would compile and pass
   its own tests but solves the wrong problem, rests on a hidden assumption, or fights
   the existing codebase. It runs **before** building, so a bad plan is caught before
   any tokens are spent implementing it.
-- **Drift-Check** catches *conformance errors* — omissions (spec'd but missing),
+- **Drift Check** catches *conformance errors* — omissions (spec'd but missing),
   deviations (built differently), and **excess** (built but not sanctioned by the
   plan, or in its OUT OF SCOPE list). Catching excess depends on it seeing *new*
   files, not just the diff — which is why its prompt makes it run `git status` and
   read new files' contents, not just `git diff`. It does **not** judge whether the
-  plan was good — that's the Reviewer's job.
-- **Code-Review** catches *implementation quality problems* — bugs, security
-  vulnerabilities, anti-patterns, and correctness issues that drift-check explicitly
+  plan was good — that's the plan review's job.
+- **Code Review** catches *implementation quality problems* — bugs, security
+  vulnerabilities, anti-patterns, and correctness issues that 2-check-drift explicitly
   ignores (drift-check only checks conformance, not quality). It runs after
   drift-check, so it only inspects code that has already passed the conformance bar.
   Security findings are backed by **Semgrep** — 5000+ deterministic rules across 35+
   languages — cited alongside the LLM's own judgment. Semgrep runs locally with no
   API key (just `brew install semgrep` once).
 - **Tests + actually running the app** catch *mechanical breakage*. This is the
-  truest reviewer and costs nothing — see §7.
+  truest 1-review-plan and costs nothing — see §7.
 - **You** catch "is this what I actually wanted." No model can do this for you; it's
   why the plan always surfaces a plain-English summary you can sanity-check, and why
-  your judgment sits *between* code-review and the commit.
+  your judgment sits *between 3-review-code and the commit.
 
 ---
 
@@ -125,9 +125,9 @@ mistakes that matter. Decorrelation is the point.
 | `opencode.jsonc` | The config. Defines the five agents, their models, temperatures, prompts, and permissions. |
 | `architect.md` | System prompt for the `plan` agent. |
 | `build.md` | System prompt for the `build` agent. |
-| `reviewer.md` | System prompt for the `reviewer` subagent. |
-| `drift-check.md` | System prompt for the `drift-check` subagent. |
-| `code-review.md` | System prompt for the `code-review` subagent. |
+| `1-review-plan.md` | System prompt for the `1-review-plan` subagent. |
+| `2-check-drift.md` | System prompt for the `2-check-drift` subagent. |
+| `3-review-code.md` | System prompt for the `3-review-code` subagent. |
 | `PLAN.md` | **Generated at runtime** by the architect — the hand-off artifact. Not authored by you; persists in the working directory across tasks. |
 | `pipeline-memory.md` | **Generated at runtime** by the builder — a chronological log of past builds, lessons, and operator preferences. Created on first use; never committed. Read by the architect before planning, read and written by the builder before shipping. |
 
@@ -149,7 +149,7 @@ You describe a task (plain language)
  └──────────────┘   shows you a plain-English summary
         │
         ▼
-   @reviewer ........ (optional, for non-trivial tasks)
+   @1-review-plan ........ (optional, for non-trivial tasks)
         │            reads PLAN.md + the code itself,
         │            returns SOUND or REVISE
         │            └─ if REVISE: architect fixes PLAN.md, re-review
@@ -162,10 +162,10 @@ You describe a task (plain language)
  └──────────────┘   leaves changes UNCOMMITTED
         │
         ▼
-   @drift-check ..... reads PLAN.md + git diff + new files,
+   @2-check-drift ..... reads PLAN.md + git diff + new files,
         │            returns MATCHES PLAN or DRIFT FOUND
         ▼
-   @code-review ..... reads git diff + changed files,
+   @3-review-code ..... reads git diff + changed files,
         │            returns PASS or ISSUES FOUND
         ▼
    You run it / click it / look at it  ← the real final check
@@ -178,11 +178,11 @@ You describe a task (plain language)
 
 `plan` and `build` are **primary agents** — you switch between them with the **Tab**
 key, and they share one session, so the builder sees the plan and everything the
-architect read as live context (no lossy re-paste). `reviewer`, `drift-check`, and
-`code-review` are **subagents** — you invoke them by typing `@reviewer` /
-`@drift-check` / `@code-review` from whichever primary agent you're in (you do not
+architect read as live context (no lossy re-paste). `1-review-plan`, `2-check-drift`, and
+`3-review-code` are **subagents** — you invoke them by typing `@1-review-plan` /
+`@2-check-drift` / `@3-review-code` from whichever primary agent you're in (you do not
 Tab into them). They run in isolated child sessions, which is *desirable* for the
-checkers: a reviewer that inherited the architect's reasoning would just agree with
+checkers: a 1-review-plan that inherited the architect's reasoning would just agree with
 it. The checkers read `PLAN.md` from disk instead, which is why the architect always
 writes the full plan to that file.
 
@@ -212,8 +212,8 @@ created automatically by the builder on first use and never committed.
 ### When to use the full chain vs. a short version
 The full chain is for **large or hard-to-reverse changes** where a wrong plan is
 expensive. For a small change, the honest minimum that protects you is: **plan →
-build → run it and look → tell build to commit and push.** The reviewer, drift-check,
-and code-review are insurance you add when the stakes justify the extra passes (each
+build → run it and look → tell build to commit and push.** The @1-review-plan, @2-check-drift,
+and@3-review-code are insurance you add when the stakes justify the extra passes (each
 is a real cost). Don't fire everything on a one-line tweak.
 
 ---
@@ -232,7 +232,7 @@ is a real cost). Don't fire everything on a one-line tweak.
   multi-agent context-inheritance is fuzzy and version-dependent (see §8). Writing
   `PLAN.md` makes every hand-off deterministic and inspectable.
 - **The "quarantine" output split.** The architect writes the *full* plan to `PLAN.md`
-  (so the reviewer has complete context) but shows you only the plain-English sections
+  (so the 1-review-plan has complete context) but shows you only the plain-English sections
   in chat. The chat is a readable summary; the file is the source of truth.
 - **The builder leaves changes uncommitted, and commits only when you say to ship.**
   The builder has access to `git commit`/`git push`, but its prompt instructs it to
@@ -244,8 +244,8 @@ is a real cost). Don't fire everything on a one-line tweak.
   agent acts on it. Destructive operations (force-push, rebase, reset, etc.) remain
   permission-denied.
 - **The checkers stay SEPARATE from each other and from the builder.** Tempting to
-  merge drift-check and code-review into one "post-build check" step — don't.
-  Drift-check's value is *independent* conformance verification; code-review's value is
+  merge 2-check-drift and 3-review-code into one "post-build check" step — don't.
+  Drift check's value is *independent* conformance verification; 3-review-code's value is
   *independent* quality inspection on top of that. An agent doing both would have
   conflated standards. They also serve different operator decision points: drift-found
   sends you back to plan; issues-found sends you back to build. Your judgment belongs
@@ -264,7 +264,7 @@ is a real cost). Don't fire everything on a one-line tweak.
   cleanup — just a markdown file with dated entries. The architect's discoveries reach
   memory through an optional MEMORY TO PERSIST line in PLAN.md; the builder transcribes
   it verbatim.
-- **Deterministic SAST via Semgrep.** The code-review agent runs each changed file
+- **Deterministic SAST via Semgrep.** The 3-review-code agent runs each changed file
   through Semgrep's MCP server (`semgrep_scan`) — 5000+ rules across 35+ languages
   that fire the same way every time, regardless of the LLM's current state. This is
   the most heterogeneous checker in the pipeline: it's not an LLM at all. Findings are
@@ -286,7 +286,7 @@ it. The architect writes a plain-English header (for you) plus a fenced
 | IN PLAIN ENGLISH | what the user will get, jargon-free | operator |
 | THE BIG PICTURE | how it fits the system + the one tradeoff worth knowing | operator |
 | ASSUMPTIONS I MADE | product choices decided for you, so you can correct them | operator |
-| CONTEXT I VERIFIED | the real files/patterns/interfaces examined — evidence the plan is grounded, auditable by the reviewer | spec |
+| CONTEXT I VERIFIED | the real files/patterns/interfaces examined — evidence the plan is grounded, auditable by the 1-review-plan | spec |
 | FILES TO TOUCH | path · what changes there | spec |
 | COMPONENTS | name · responsibility · key tech (+ verified external versions) | spec |
 | SEQUENCING | ordered build steps, when order matters | spec |
@@ -321,9 +321,9 @@ reasoning models — low temperature can degrade their reasoning trace.
 |-------|-------|-----------------|------|-----------------|
 | plan | DeepSeek V4 Pro | `deepseek/` (direct) | 1.0 | DeepSeek's thinking-mode guidance |
 | build | DeepSeek V4 Pro | `deepseek/` (direct) | 1.0 | same |
-| reviewer | GLM-5.1 | `opencode-go/` | **0.6** | Z.AI's own GLM-5.1 thinking-mode docs |
-| drift-check | Kimi K2.6 | `opencode-go/` | 1.0 | Moonshot's card — K2.6 thinking mode wants 1.0 |
-| code-review | Kimi K2.6 | `opencode-go/` | 1.0 | same |
+|1-review-plan| GLM-5.1 | `opencode-go/` | **0.6** | Z.AI's own GLM-5.1 thinking-mode docs |
+|2-check-drift| Kimi K2.6 | `opencode-go/` | 1.0 | Moonshot's card — K2.6 thinking mode wants 1.0 |
+|3-review-code| Kimi K2.6 | `opencode-go/` | 1.0 | same |
 
 **Why the temperatures differ — and why you should not "tidy" them to match.** These
 are not arbitrary and not a style choice. Each is the value the *model's own makers*
@@ -337,22 +337,22 @@ model's reasoning trace was trained:
 - **GLM-5.1 → 0.6.** This is the one that looks odd next to the others and the one
   people most want to "fix" to match. Don't. Z.AI's own GLM-5.1 docs specify 0.6 for
   thinking mode — it's simply a different vendor's recommended number, not a sign that
-  the reviewer "should be more deterministic because it's a critic." The reviewer runs
+  the 1-review-plan "should be more deterministic because it's a critic." The 1-review-plan runs
   at 0.6 because *GLM* wants 0.6, full stop. (Its discipline against inventing fake
   flaws comes from its prompt, not from a cold temperature.)
-- **Kimi K2.6 → 1.0 (both drift-check and code-review).** Moonshot's model card recommends 1.0
+- **Kimi K2.6 → 1.0 (both 2-check-drift and 3-review-code).** Moonshot's model card recommends 1.0
   for thinking mode and notes K2.6 effectively wants its default sampling — overriding
   it downward fights the model. Both Kimi seats run at 1.0.
 
 The pattern to internalize: **temperature follows the model, not the role.** Two
-agents doing very different jobs (drift-check vs. code-review) share 1.0 because they share a
-model; two "thinking-hard" agents (reviewer at 0.6, plan at 1.0) differ because they
+agents doing very different jobs (2-check-drift vs. 3-review-code) share 1.0 because they share a
+model; two "thinking-hard" agents (`1-review-plan` (reviewer), plan at 1.0) differ because they
 are different models. If you ever swap a model, look up *that* model's recommended
 thinking-mode temperature and use it — never carry over the number from the model it
 replaced. There's no reasoning-effort knob exposed for the Kimi seats, only temperature.
 
 **Provider note (mixed setup):** `plan`/`build` run on **direct DeepSeek**
-(`deepseek/`), while `reviewer`/`drift-check`/`code-review` run on **OpenCode Go**
+(`deepseek/`), while `1-review-plan`/`2-check-drift`/`3-review-code` run on **OpenCode Go**
 (`opencode-go/`) — a flat subscription with dollar-denominated usage limits,
 US/EU/Singapore hosting, and a zero-retention policy (your code is not used for
 training). DeepSeek V4 Pro is also on Go as `opencode-go/deepseek-v4-pro` — so you
@@ -381,18 +381,18 @@ behavior looks off, confirm its effective temperature is really 1.0 (see §9).
    technical one.
 3. **Read the plain-English summary** the architect shows you. Does the described
    outcome match what you wanted? It also writes the full plan to `PLAN.md`.
-4. *(Optional, for non-trivial work)* **Type `@reviewer`.** If it says REVISE, ask the
+4. *(Optional, for non-trivial work)* **Type `@1-review-plan`.** If it says REVISE, ask the
    architect to address the flaws; it will rewrite `PLAN.md`.
 5. **Press Tab to switch to `build`.** Tell it to implement. It reads `PLAN.md` and
    `pipeline-memory.md` (for past lessons), builds exactly that, runs tests as it
    goes, and leaves the changes uncommitted.
-6. *(Optional)* **Type `@drift-check`** to confirm the build matches the plan and that
+6. *(Optional)* **Type `@2-check-drift`** to confirm the build matches the plan and that
    nothing was built in excess.
-7. *(Optional)* **Type `@code-review`** to check the actual code for bugs, security
-   issues, and anti-patterns. This catches quality problems drift-check won't see.
+7. *(Optional)* **Type `@3-review-code`** to check the actual code for bugs, security
+   issues, and anti-patterns. This catches quality problems 2-check-drift won't see.
 8. **Run the thing yourself.** Open the app, click the button, use the feature. This
-   is the most important check and the one only you can do — a clean drift-check and
-   code-review mean "the build followed the plan and the code looks sound," NOT "this
+   is the most important check and the one only you can do — a clean 2-check-drift and
+  3-review-code mean "the build followed the plan and the code looks sound," NOT "this
    is what you wanted."
 9. **Tell the build agent "commit and push" when you're ready to ship.** It prints
    the files, commit message, and target branch, writes a memory entry to
@@ -422,7 +422,7 @@ kind.
   Interactive desktop use should honor them, but test it.
 - **Context inheritance for subagents is fuzzy.** This is why hand-offs go through
   `PLAN.md` on disk rather than relying on what a subagent "sees" from the parent.
-  All three checker subagents (reviewer, drift-check, code-review) carry explicit
+  All three checker subagents (@1-review-plan, @2-check-drift, @3-review-code) carry explicit
   instructions to trust disk state over any inherited context that conflicts with it.
 
 **Bigger-picture caveat:** this is a sophisticated pipeline (five agents, two
@@ -442,7 +442,7 @@ Test silent-failure points first, in order. Use a sacrificial git repo — and f
 the build agent's push tests, a **throwaway GitHub remote**, not anything real.
 
 **Stage 0 — Sandbox.** New folder, `git init`, a trivial starter project, the
-six files at root, one initial commit (gives drift-check/code-review a clean `HEAD`).
+six files at root, one initial commit (gives drift-check/3-review-code a clean `HEAD`).
 Point it at a throwaway GitHub repo so push tests are safe. Install Semgrep:
 `brew install semgrep && semgrep --version`.
 
@@ -476,21 +476,21 @@ returning OK"):
   one). For a trivial feature it should *omit* the sections that don't apply
   (SEQUENCING, RISKS, etc.) rather than pad them — that's right-sizing working. Try a
   more involved task too and confirm SEQUENCING and HOW TO VERIFY then appear.
-- `@reviewer` reads `PLAN.md` + code, returns SOUND/REVISE.
+- `@1-review-plan` reads `PLAN.md` + code, returns SOUND/REVISE.
 - Tab to `build`: confirm it follows the SEQUENCING order (if present) and runs the
   HOW TO VERIFY command(s), implements, and leaves changes **uncommitted** (verify
   with `git status`).
-- `@drift-check`: confirm its git commands actually execute and it returns a verdict.
+- `@2-check-drift`: confirm its git commands actually execute and it returns a verdict.
   Bonus: have the builder add a stray file the plan didn't mention, and confirm
-  drift-check flags it under OUT-OF-SCOPE (tests the excess-detection path).
-- `@code-review`: confirm it reads the diff and returns a code quality verdict.
+ 2-check-drift flags it under OUT-OF-SCOPE (tests the excess-detection path).
+- `@3-review-code`: confirm it reads the diff and returns a code quality verdict.
   Bonus: have the builder introduce a minor bug (e.g. off-by-one), and confirm
-  code-review flags it.
+ 3-review-code flags it.
   **Semgrep test:** have the builder write a deliberately vulnerable Python snippet
-  (e.g. `exec(user_input)` or `yaml.load(untrusted_data)`), then run `@code-review`.
+  (e.g. `exec(user_input)` or `yaml.load(untrusted_data)`), then run `@3-review-code`.
   Confirm the output flags the vulnerability with a `(Semgrep)` or
   `(Semgrep: <rule-id>)` citation. Also test the fallback: set
-  `SEMGREP_SEND_METRICS=off`, run `@code-review`, confirm the NOTES section says
+  `SEMGREP_SEND_METRICS=off`, run `@3-review-code`, confirm the NOTES section says
   Semgrep was unavailable and the agent proceeds with LLM-only analysis.
 - Tell the `build` agent "commit and push": confirm it prints the file
   list/message/branch before acting, then commits and pushes correctly. Verify
@@ -512,7 +512,7 @@ returning OK"):
   automatic condense or truncation occurred.
 
 **Stage 5 — Kimi endpoint check.** Confirm the Kimi seats' effective temperature
-isn't being scaled by the endpoint format, and that drift-check's verdict isn't
+isn't being scaled by the endpoint format, and that drift check's verdict isn't
 truncated.
 
 **Final judgment.** Count the manual steps and time for that trivial task vs. just
@@ -527,10 +527,10 @@ tweak — tells you whether this pipeline earns its complexity for *your* work.
 |--------|-----|
 | Start a task | Describe it to `plan` (default agent) |
 | Plan an architecture | automatic — `plan` writes `PLAN.md` |
-| Review the plan | type `@reviewer` |
+| Review the plan | type `@1-review-plan` |
 | Build it | press **Tab** → `build`, tell it to implement |
-| Check the build matches the plan | type `@drift-check` |
-| Check the code for bugs | type `@code-review` |
+| Check the build matches the plan | type `@2-check-drift` |
+| Check the code for bugs | type `@3-review-code` |
 | Confirm it's what you wanted | run/click/use it yourself |
 | Commit & push | tell `build` "commit and push" (it shows what it does before acting) |
 | Plan got flagged | tell `plan` to address the review; it rewrites `PLAN.md` |
@@ -540,7 +540,7 @@ tweak — tells you whether this pipeline earns its complexity for *your* work.
 
 ## 11. Status
 
-As of this writing the pipeline is **v2 — code-review agent added, git agent
+As of this writing the pipeline is **v2 — 3-review-code agent added, git agent
 removed, PLAN.md persists, context inheritance hardened.** Not yet fully verified
 end-to-end. Treat §9 as a required checklist, not an optional one, before trusting
 this on real code — especially the force-push test on the build agent, since the
