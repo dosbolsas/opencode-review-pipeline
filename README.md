@@ -1,4 +1,4 @@
-# opencode-review-pipeline
+# openvibe
 
 **A multi-agent [OpenCode](https://opencode.ai) setup that splits AI coding into
 separate roles — plan, review, build, drift-check, code-review, ship — each on a
@@ -29,7 +29,7 @@ live together.
 
 ## Quickstart
 
-1. **Copy the files** (`opencode.jsonc` + the five `.md` prompts) into your project
+1. **Copy the files** (`opencode.jsonc` + the five `.md` prompts + `.gitignore`) into your project
    root, beside each other.
 2. **Connect your providers.** This setup uses DeepSeek (direct) for plan/build and
    OpenCode Go for the review/check/code-review agents — so authenticate both (`/connect`).
@@ -37,7 +37,7 @@ live together.
 3. **Install Semgrep** for deterministic security scanning during code review:
    `brew install semgrep`. One-time; the 3-review-code agent uses it automatically.
    Ensure `SEMGREP_SEND_METRICS` is not set to `off` (the default `auto` config
-   requires anonymous metrics; see §5). If you skip this step,3-review-code falls back
+   requires anonymous metrics; see §5). If you skip this step, 3-review-code falls back
    to LLM-only security analysis with a note.
 4. **Verify the model strings** in OpenCode's `/models` picker and fix any that don't
    resolve — a wrong `provider/model` prefix makes an agent silently fail to load.
@@ -114,7 +114,7 @@ mistakes that matter. Decorrelation is the point. Plan‑review and code‑revie
   truest 1-review-plan and costs nothing — see §7.
 - **You** catch "is this what I actually wanted." No model can do this for you; it's
   why the plan always surfaces a plain-English summary you can sanity-check, and why
-  your judgment sits *between 3-review-code and the commit.
+  your judgment sits *between* 3-review-code and the commit.
 
 ---
 
@@ -128,6 +128,7 @@ mistakes that matter. Decorrelation is the point. Plan‑review and code‑revie
 | `1-review-plan.md` | System prompt for the `1-review-plan` subagent. |
 | `2-check-drift.md` | System prompt for the `2-check-drift` subagent. |
 | `3-review-code.md` | System prompt for the `3-review-code` subagent. |
+| `.gitignore` | Git ignore rules — keeps `PLAN.md` and `pipeline-memory.md` out of commits. |
 | `PLAN.md` | **Generated at runtime** by the architect — the hand-off artifact. Not authored by you; persists in the working directory across tasks. |
 | `pipeline-memory.md` | **Generated at runtime** by the builder — a chronological log of past builds, lessons, and operator preferences. Created on first use; never committed. Read by the architect before planning, read and written by the builder before shipping. |
 
@@ -213,7 +214,7 @@ created automatically by the builder on first use and never committed.
 The full chain is for **large or hard-to-reverse changes** where a wrong plan is
 expensive. For a small change, the honest minimum that protects you is: **plan →
 build → run it and look → tell build to commit and push.** The @1-review-plan, @2-check-drift,
-and@3-review-code are insurance you add when the stakes justify the extra passes (each
+and @3-review-code are insurance you add when the stakes justify the extra passes (each
 is a real cost). Don't fire everything on a one-line tweak.
 
 ---
@@ -442,7 +443,7 @@ Test silent-failure points first, in order. Use a sacrificial git repo — and f
 the build agent's push tests, a **throwaway GitHub remote**, not anything real.
 
 **Stage 0 — Sandbox.** New folder, `git init`, a trivial starter project, the
-six files at root, one initial commit (gives drift-check/3-review-code a clean `HEAD`).
+seven files at root, one initial commit (gives drift-check/3-review-code a clean `HEAD`).
 Point it at a throwaway GitHub repo so push tests are safe. Install Semgrep:
 `brew install semgrep && semgrep --version`.
 

@@ -1,1 +1,5 @@
 .DS_Store
+
+# Pipeline runtime artifacts — local state, never committed
+PLAN.md
+pipeline-memory.md
