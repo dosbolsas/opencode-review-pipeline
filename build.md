@@ -92,7 +92,7 @@ The operator has tested your work and is ready to commit. When they tell you to
 
    Memory entry format:
    ```
-   ## YYYY-MM-DD: <one-line task summary from IN PLAIN ENGLISH>
+    ## YYYY-MM-DD HH:MM: <one-line task summary from IN PLAIN ENGLISH>
    - Built: <files touched, from FILES TO TOUCH>
    - Key insight: <MEMORY TO PERSIST verbatim, or THE BIG PICTURE verbatim>
    - Verified: <HOW TO VERIFY result>

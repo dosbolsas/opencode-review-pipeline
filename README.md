@@ -83,14 +83,14 @@ caught by a different perspective:
 |------|-------|-----|-------|----------------|
 | **Architect** | `plan` | Reads the codebase, decides the architecture, writes the plan. Touches no source code. | DeepSeek V4 Pro (Think Max) | Strongest open reasoner; deep thinking is the whole value here, and verbosity doesn't matter for a few planning calls. |
 | **Builder** | `build` | Implements the plan to the letter. Runs tests. Leaves changes uncommitted; commits only when told to ship. | DeepSeek V4 Pro (Think High) | Same model, lower reasoning effort — strong execution without the full Max token burn across a build loop. |
-| **Plan Review** | `1-review-plan` | Step 1. Independently critiques the *plan* for subtle judgment flaws, before any code is written. | GLM-5.1 | **Different lab** from the builder → decorrelated blind spots. Strong reasoner for a pure-judgment task. |
-| **Drift Check** | `2-check-drift` | Step 2. After the build, checks whether the implementation matches the plan — including anything built *in excess* of the spec. | Kimi K2.6 | **Different lab** from the builder → decorrelation at the second checkpoint. Strong at multi-step tool loops (status → diff → read → reconcile), which is exactly this job. |
+| **Plan Review** | `1-review-plan` | Step 1. Independently critiques the *plan* for subtle judgment flaws, before any code is written. | Kimi K2.6 | **Different lab** from the builder → decorrelated blind spots. Highest‑intelligence model on Go (AAII 53.9) — the hardest judgment task gets the strongest checker. |
+| **Drift Check** | `2-check-drift` | Step 2. After the build, checks whether the implementation matches the plan — including anything built *in excess* of the spec. | GLM-5.1 | **Different lab** from the builder AND from both other checkers (Kimi K2.6 on plan‑review and code‑review). GLM‑5.1 (AAII 51.4) is a strong reasoner; at 0.6 temperature per Z.AI's docs, its output is disciplined and structured — exactly what drift‑check's rigid conformance‑report format demands. |
 | **Code Review** | `3-review-code` | Step 3. After the build and drift-check, examines the actual code for bugs, security issues, anti-patterns, and correctness. Uses Semgrep for deterministic SAST behind its LLM judgment. Does NOT check conformance. | Kimi K2.6 | Different lab from the builder; catches implementation quality problems `2-check-drift` explicitly ignores. Semgrep adds a non-LLM guardrail — 5000+ rules, 35+ languages. |
 
 **The single most important principle:** the Plan Review, Drift Check, and Code Review
 are on *different model families* from the Builder **on purpose**. If every checker
 were DeepSeek, they'd share DeepSeek's blind spots and wave through exactly the
-mistakes that matter. Decorrelation is the point.
+mistakes that matter. Decorrelation is the point. Plan‑review and code‑review share Kimi K2.6, but they inspect different artifact types (PLAN.md vs. code diffs) under fundamentally different prompts — the shared model is acceptable because the two jobs exercise distinct reasoning domains. Drift‑check (GLM‑5.1) is the sole Z.AI seat, positioned between the two Kimi instances — three distinct model‑assignment patterns checking the same builder.
 
 ### What each checker can and cannot catch
 - The **Plan Review** catches *errors of judgment* — a plan that would compile and pass
@@ -321,9 +321,9 @@ reasoning models — low temperature can degrade their reasoning trace.
 |-------|-------|-----------------|------|-----------------|
 | plan | DeepSeek V4 Pro | `deepseek/` (direct) | 1.0 | DeepSeek's thinking-mode guidance |
 | build | DeepSeek V4 Pro | `deepseek/` (direct) | 1.0 | same |
-|1-review-plan| GLM-5.1 | `opencode-go/` | **0.6** | Z.AI's own GLM-5.1 thinking-mode docs |
-|2-check-drift| Kimi K2.6 | `opencode-go/` | 1.0 | Moonshot's card — K2.6 thinking mode wants 1.0 |
-|3-review-code| Kimi K2.6 | `opencode-go/` | 1.0 | same |
+|1-review-plan| Kimi K2.6 | `opencode-go/` | 1.0 | Moonshot's model card — K2.6 thinking mode wants 1.0 |
+|2-check-drift| GLM-5.1 | `opencode-go/` | **0.6** | Z.AI's own GLM-5.1 thinking-mode docs |
+|3-review-code| Kimi K2.6 | `opencode-go/` | 1.0 | same as 1-review-plan — K2.6 thinking mode wants 1.0 |
 
 **Why the temperatures differ — and why you should not "tidy" them to match.** These
 are not arbitrary and not a style choice. Each is the value the *model's own makers*
@@ -337,17 +337,17 @@ model's reasoning trace was trained:
 - **GLM-5.1 → 0.6.** This is the one that looks odd next to the others and the one
   people most want to "fix" to match. Don't. Z.AI's own GLM-5.1 docs specify 0.6 for
   thinking mode — it's simply a different vendor's recommended number, not a sign that
-  the 1-review-plan "should be more deterministic because it's a critic." The 1-review-plan runs
+  the drift-check "should be more deterministic." The drift-check runs
   at 0.6 because *GLM* wants 0.6, full stop. (Its discipline against inventing fake
-  flaws comes from its prompt, not from a cold temperature.)
-- **Kimi K2.6 → 1.0 (both 2-check-drift and 3-review-code).** Moonshot's model card recommends 1.0
+  drift comes from its prompt and structured output format, not from a cold temperature.)
+- **Kimi K2.6 → 1.0 (both 1-review-plan and 3-review-code).** Moonshot's model card recommends 1.0
   for thinking mode and notes K2.6 effectively wants its default sampling — overriding
   it downward fights the model. Both Kimi seats run at 1.0.
 
 The pattern to internalize: **temperature follows the model, not the role.** Two
-agents doing very different jobs (2-check-drift vs. 3-review-code) share 1.0 because they share a
-model; two "thinking-hard" agents (`1-review-plan` (reviewer), plan at 1.0) differ because they
-are different models. If you ever swap a model, look up *that* model's recommended
+agents doing very different jobs (1-review-plan vs. 3-review-code) share 1.0 because they share a
+model (Kimi K2.6); the drift-check runs at 0.6 because it uses a different model (GLM-5.1).
+If you ever swap a model, look up *that* model's recommended
 thinking-mode temperature and use it — never carry over the number from the model it
 replaced. There's no reasoning-effort knob exposed for the Kimi seats, only temperature.
 
@@ -362,7 +362,7 @@ run two providers. The high-volume DeepSeek seats are kept direct by choice.
 **Endpoint gotcha:** on Go, the endpoint format varies by model (some use the
 Anthropic-format `/v1/messages`, some the OpenAI-format `/chat/completions`), and
 Anthropic-format endpoints have a history of scaling temperature. If a Kimi seat's
-behavior looks off, confirm its effective temperature is really 1.0 (see §9).
+behavior looks off (now on 1-review-plan and 3-review-code), confirm its effective temperature is really 1.0 (see §9).
 
 > ⚠️ **Verify every model string** in the `/models` picker before trusting it
 > (`deepseek/deepseek-v4-pro`, `opencode-go/glm-5.1`, `opencode-go/kimi-k2.6`). A wrong
