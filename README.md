@@ -34,11 +34,16 @@ live together.
 2. **Connect your providers.** This setup uses DeepSeek (direct) for plan/build and
    OpenCode Go for the review/check/code-review agents — so authenticate both (`/connect`).
    You can also consolidate everything onto one provider; see §6.
-3. **Verify the model strings** in OpenCode's `/models` picker and fix any that don't
+3. **Install Semgrep** for deterministic security scanning during code review:
+   `brew install semgrep`. One-time; the code-review agent uses it automatically.
+   Ensure `SEMGREP_SEND_METRICS` is not set to `off` (the default `auto` config
+   requires anonymous metrics; see §5). If you skip this step, code-review falls back
+   to LLM-only security analysis with a note.
+4. **Verify the model strings** in OpenCode's `/models` picker and fix any that don't
    resolve — a wrong `provider/model` prefix makes an agent silently fail to load.
-4. **Run the dry-run (§9)** on a throwaway repo to confirm permissions, reasoning
+5. **Run the dry-run (§9)** on a throwaway repo to confirm permissions, reasoning
    effort, and the build agent's safety guards actually hold on your version.
-5. **Use it:** describe a feature to `plan` → `@reviewer` → Tab to `build` →
+6. **Use it:** describe a feature to `plan` → `@reviewer` → Tab to `build` →
    `@drift-check` → `@code-review` → run it yourself → tell `build` "commit and push"
    to ship. (Full walkthrough in §7.)
 
@@ -80,7 +85,7 @@ caught by a different perspective:
 | **Builder** | `build` | Implements the plan to the letter. Runs tests. Leaves changes uncommitted; commits only when told to ship. | DeepSeek V4 Pro (Think High) | Same model, lower reasoning effort — strong execution without the full Max token burn across a build loop. |
 | **Reviewer** | `reviewer` | Independently critiques the *plan* for subtle judgment flaws, before any code is written. | GLM-5.1 | **Different lab** from the builder → decorrelated blind spots. Strong reasoner for a pure-judgment task. |
 | **Drift-Check** | `drift-check` | After the build, checks whether the implementation matches the plan — including anything built *in excess* of the spec. | Kimi K2.6 | **Different lab** from the builder → decorrelation at the second checkpoint. Strong at multi-step tool loops (status → diff → read → reconcile), which is exactly this job. |
-| **Code-Review** | `code-review` | After the build and drift-check, examines the actual code for bugs, security issues, anti-patterns, and correctness. Does NOT check conformance. | Kimi K2.6 | Different lab from the builder; catches implementation quality problems drift-check explicitly ignores. Strong at code inspection.
+| **Code-Review** | `code-review` | After the build and drift-check, examines the actual code for bugs, security issues, anti-patterns, and correctness. Uses Semgrep for deterministic SAST behind its LLM judgment. Does NOT check conformance. | Kimi K2.6 | Different lab from the builder; catches implementation quality problems drift-check explicitly ignores. Semgrep adds a non-LLM guardrail — 5000+ rules, 35+ languages. |
 
 **The single most important principle:** the Reviewer, Drift-Check, and Code-Review
 are on *different model families* from the Builder **on purpose**. If every checker
@@ -102,6 +107,9 @@ mistakes that matter. Decorrelation is the point.
   vulnerabilities, anti-patterns, and correctness issues that drift-check explicitly
   ignores (drift-check only checks conformance, not quality). It runs after
   drift-check, so it only inspects code that has already passed the conformance bar.
+  Security findings are backed by **Semgrep** — 5000+ deterministic rules across 35+
+  languages — cited alongside the LLM's own judgment. Semgrep runs locally with no
+  API key (just `brew install semgrep` once).
 - **Tests + actually running the app** catch *mechanical breakage*. This is the
   truest reviewer and costs nothing — see §7.
 - **You** catch "is this what I actually wanted." No model can do this for you; it's
@@ -256,6 +264,16 @@ is a real cost). Don't fire everything on a one-line tweak.
   cleanup — just a markdown file with dated entries. The architect's discoveries reach
   memory through an optional MEMORY TO PERSIST line in PLAN.md; the builder transcribes
   it verbatim.
+- **Deterministic SAST via Semgrep.** The code-review agent runs each changed file
+  through Semgrep's MCP server (`semgrep_scan`) — 5000+ rules across 35+ languages
+  that fire the same way every time, regardless of the LLM's current state. This is
+  the most heterogeneous checker in the pipeline: it's not an LLM at all. Findings are
+  folded into the existing CODE REVIEW output format with `(Semgrep: <rule-id>)`
+  citations. Gracefully degrades if Semgrep isn't installed — the agent notes the
+  absence and proceeds with pure LLM analysis. One-time prerequisite:
+  `brew install semgrep`. Ensure `SEMGREP_SEND_METRICS` is not set to `off` (the
+  default `auto` config requires anonymous metrics — a Semgrep requirement, not a
+  pipeline design choice).
 
 ### What's in PLAN.md (the actual product)
 
@@ -424,12 +442,16 @@ the build agent's push tests, a **throwaway GitHub remote**, not anything real.
 
 **Stage 0 — Sandbox.** New folder, `git init`, a trivial starter project, the
 six files at root, one initial commit (gives drift-check/code-review a clean `HEAD`).
-Point it at a throwaway GitHub repo so push tests are safe.
+Point it at a throwaway GitHub repo so push tests are safe. Install Semgrep:
+`brew install semgrep && semgrep --version`.
 
 **Stage 1 — Config loads, models resolve.** Restart OpenCode. Confirm: you land in
 `plan`; all five agents appear; each is on the model you assigned (ask "which model
 are you?" or check the indicator). A missing/fallback agent = wrong prefix. The
 mixed-provider setup means check that BOTH the DeepSeek-direct and the Go agents load.
+**Also confirm the Semgrep MCP server loaded:** ask `plan` which MCP tools are
+available — `semgrep_scan` should appear. If it doesn't, restart OpenCode (the MCP
+server starts on launch).
 
 **Stage 2 — Permissions hold (the silent-danger tests).**
 - Ask `plan` to edit a source file → must **refuse**.
@@ -463,6 +485,12 @@ returning OK"):
 - `@code-review`: confirm it reads the diff and returns a code quality verdict.
   Bonus: have the builder introduce a minor bug (e.g. off-by-one), and confirm
   code-review flags it.
+  **Semgrep test:** have the builder write a deliberately vulnerable Python snippet
+  (e.g. `exec(user_input)` or `yaml.load(untrusted_data)`), then run `@code-review`.
+  Confirm the output flags the vulnerability with a `(Semgrep)` or
+  `(Semgrep: <rule-id>)` citation. Also test the fallback: set
+  `SEMGREP_SEND_METRICS=off`, run `@code-review`, confirm the NOTES section says
+  Semgrep was unavailable and the agent proceeds with LLM-only analysis.
 - Tell the `build` agent "commit and push": confirm it prints the file
   list/message/branch before acting, then commits and pushes correctly. Verify
   `PLAN.md` stays in the working directory (not staged, not committed, not deleted).

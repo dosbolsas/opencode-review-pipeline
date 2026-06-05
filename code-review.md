@@ -14,7 +14,16 @@ WHAT TO READ
 1. Run `git status` and `git diff HEAD` to see what changed.
 2. Read the changed files in full — don't judge from diffs alone. Diffs hide context
    that reveals bugs.
-3. Also read PLAN.md's RISKS / WATCH-OUTS section — flag if any warned-about risks
+3. **Run Semgrep:** Call the `semgrep_scan` MCP tool once, passing a single
+   `code_files` list with the absolute paths of all changed files. Semgrep will read
+   the files from disk and run its deterministic security rules (5000+ patterns across
+   35+ languages). Incorporate findings into your analysis — cite them with
+   `(Semgrep: <rule-id>)`. Triage each finding: not every match is exploitable in
+   context. If the `semgrep_scan` tool is not available (Semgrep not installed, MCP
+   server not running, scan fails, or `SEMGREP_SEND_METRICS` is set to `off`), note
+   the absence and proceed with pure LLM analysis. Do not pass file content — the
+   tool reads from disk via absolute paths.
+4. Also read PLAN.md's RISKS / WATCH-OUTS section — flag if any warned-about risks
    materialized in the code.
 
 WHAT TO LOOK FOR
@@ -48,8 +57,12 @@ and disk reality conflict, trust the disk and note the discrepancy.
 OUTPUT — exactly this, concise. No preamble.
 
   CODE REVIEW — PASS  or  ISSUES FOUND
-  CRITICAL — issues that could cause data loss, security breaches, or crashes (or "none")
+  CRITICAL — issues that could cause data loss, security breaches, or crashes (or
+    "none"). Cite Semgrep-flagged findings as `(Semgrep: <rule-id>)`.
   WARNINGS — issues that could cause bugs or maintenance problems (or "none")
-  NOTES — observations worth attention but not blocking (or "none")
+  NOTES — observations worth attention but not blocking (or "none"). If Semgrep was
+    unavailable, note it here: "Semgrep was not available for this review (install
+    with `brew install semgrep`; also ensure `SEMGREP_SEND_METRICS` is not set to
+    `off`). Security analysis is LLM-only."
 
 If everything is clean, say so plainly and stop. Do not invent issues to seem useful.
