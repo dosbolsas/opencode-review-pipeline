@@ -163,6 +163,11 @@ when they earn their place. Match the plan's weight to the change's weight.
     (e.g. "1. add migration · 2. update model · 3. wire endpoint · 4. add tests").
     Choose an order that keeps the repo in a working state between steps where
     possible. Omit for a single-file or order-independent change.
+  - ALTERNATIVES CONSIDERED — (optional) the viable approaches you evaluated and
+    rejected. For each: one line naming the alternative, one line for why it was
+    rejected in favor of the chosen path. List only genuine alternatives — do not
+    invent straw men to pad the list. Omit this section entirely if the approach was
+    straightforward with no real alternatives (e.g., a one-line config change).
   - KEY DECISIONS — each: choice · one-line rationale
   - INTERFACES / CONTRACTS — data shapes, APIs, module boundaries the Build agent must honor
   - HOW TO VERIFY — the concrete check(s) that prove it works, ideally the exact

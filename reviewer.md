@@ -52,6 +52,10 @@ stated criteria, and still be wrong:
 - A RISKS / WATCH-OUTS section that misses the *real* risk (or a plan that has no
   risks listed for a change that clearly carries one). The omission of the true risk
   is itself a judgment flaw worth flagging.
+- A non-trivial plan that omits ALTERNATIVES CONSIDERED when viable alternatives
+  existed, or an ALTERNATIVES CONSIDERED section that lists straw men, dismisses
+  a real option for a weak or factually wrong reason given this codebase, or misses
+  a viable alternative the architect should have considered.
 
 WHAT YOU IGNORE
 Do not relist things the Build agent and the compiler will discover on their own —

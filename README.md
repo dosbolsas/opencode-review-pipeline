@@ -290,6 +290,7 @@ it. The architect writes a plain-English header (for you) plus a fenced
 | FILES TO TOUCH | path · what changes there | spec |
 | COMPONENTS | name · responsibility · key tech (+ verified external versions) | spec |
 | SEQUENCING | ordered build steps, when order matters | spec |
+| ALTERNATIVES CONSIDERED | what else was evaluated and why it was rejected — makes decision-making auditable (optional) | spec |
 | KEY DECISIONS | choice · one-line rationale | spec |
 | INTERFACES / CONTRACTS | data shapes, APIs, boundaries the builder must honor | spec |
 | HOW TO VERIFY | the concrete command(s) that prove it works | spec |
